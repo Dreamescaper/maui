@@ -481,20 +481,20 @@ namespace Microsoft.Maui.Controls.Platform.Compatibility
 				icon = _flyoutIconDrawerDrawable;
 			}
 
-			if (icon == null && (_flyoutBehavior == FlyoutBehavior.Flyout || (CanNavigateBack && backButtonVisible)))
+			if (icon == null && (_flyoutBehavior == FlyoutBehavior.Flyout || (CanNavigateBack && backButtonVisibleFromBehavior)))
 			{
 				_drawerArrowDrawable ??= new DrawerArrowDrawable(context.GetThemedContext());
 				icon = _drawerArrowDrawable;
 				defaultDrawerArrowDrawable = true;
 			}
 
-			icon?.Progress = (CanNavigateBack && backButtonVisible) ? 1 : 0;
+			icon?.Progress = (CanNavigateBack && backButtonVisibleFromBehavior) ? 1 : 0;
 
-			if (command != null || (CanNavigateBack && backButtonVisible))
+			if (command != null || (CanNavigateBack && backButtonVisibleFromBehavior))
 			{
 				_drawerToggle.DrawerIndicatorEnabled = false;
 
-				if (backButtonVisibleFromBehavior && (backButtonVisible || !defaultDrawerArrowDrawable))
+				if (backButtonVisibleFromBehavior || !defaultDrawerArrowDrawable)
 					toolbar.NavigationIcon = icon;
 			}
 			else if (_flyoutBehavior == FlyoutBehavior.Flyout || (!defaultDrawerArrowDrawable && backButtonVisible))
