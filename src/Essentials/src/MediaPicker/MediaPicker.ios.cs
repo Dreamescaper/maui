@@ -75,6 +75,7 @@ namespace Microsoft.Maui.Media
 
 			var vc = WindowStateManager.Default.GetCurrentUIViewController(true);
 			var tcs = new TaskCompletionSource<FileResult>();
+			var resultCoordinator = new MediaPickerResultCoordinator<FileResult>();
 
 			if (pickExisting && OperatingSystem.IsIOSVersionAtLeast(14, 0))
 			{
@@ -89,8 +90,9 @@ namespace Microsoft.Maui.Media
 				{
 					Delegate = new Media.PhotoPickerDelegate
 					{
+						StartedHandler = () => resultCoordinator.TryBeginCompletion(),
 						CompletedHandler = res =>
-							tcs.TrySetResult(PickerResultsToMediaFile(res))
+							resultCoordinator.TrySetResult(tcs, PickerResultsToMediaFile(res))
 					}
 				};
 
@@ -132,9 +134,10 @@ namespace Microsoft.Maui.Media
 
 				picker.Delegate = new PhotoPickerDelegate
 				{
+					StartedHandler = () => resultCoordinator.TryBeginCompletion(),
 					CompletedHandler = info =>
 					{
-						GetFileResult(info, tcs, options);
+						GetFileResult(info, tcs, resultCoordinator, options);
 					}
 				};
 			}
@@ -153,7 +156,7 @@ namespace Microsoft.Maui.Media
 			{
 				PickerRef.PresentationController.Delegate = new PhotoPickerPresentationControllerDelegate
 				{
-					Handler = () => tcs.TrySetResult(null)
+					Handler = () => resultCoordinator.TrySetCanceled(tcs, null)
 				};
 			}
 
@@ -194,6 +197,7 @@ namespace Microsoft.Maui.Media
 
 			var vc = WindowStateManager.Default.GetCurrentUIViewController(true);
 			var tcs = new TaskCompletionSource<List<FileResult>>();
+			var resultCoordinator = new MediaPickerResultCoordinator<List<FileResult>>();
 
 			if (pickExisting)
 			{
@@ -209,10 +213,18 @@ namespace Microsoft.Maui.Media
 				{
 					Delegate = new Media.PhotoPickerDelegate
 					{
+						StartedHandler = () => resultCoordinator.TryBeginCompletion(),
 						CompletedHandler = async res =>
 						{
-							var result = await PickerResultsToMediaFiles(res, options);
-							tcs.TrySetResult(result);
+							try
+							{
+								var result = await PickerResultsToMediaFiles(res, options);
+								resultCoordinator.TrySetResult(tcs, result);
+							}
+							catch (Exception ex)
+							{
+								resultCoordinator.TrySetException(tcs, ex);
+							}
 						}
 					}
 				};
@@ -234,7 +246,7 @@ namespace Microsoft.Maui.Media
 			{
 				PickerRef.PresentationController.Delegate = new PhotoPickerPresentationControllerDelegate
 				{
-					Handler = () => tcs.TrySetResult([])
+					Handler = () => resultCoordinator.TrySetCanceled(tcs, [])
 				};
 			}
 
@@ -319,15 +331,15 @@ namespace Microsoft.Maui.Media
 			return fileResults;
 		}
 
-		static void GetFileResult(NSDictionary info, TaskCompletionSource<FileResult> tcs, MediaPickerOptions options = null)
+		static void GetFileResult(NSDictionary info, TaskCompletionSource<FileResult> tcs, MediaPickerResultCoordinator<FileResult> resultCoordinator, MediaPickerOptions options = null)
 		{
 			try
 			{
-				tcs.TrySetResult(DictionaryToMediaFile(info, options));
+				resultCoordinator.TrySetResult(tcs, DictionaryToMediaFile(info, options));
 			}
 			catch (Exception ex)
 			{
-				tcs.TrySetException(ex);
+				resultCoordinator.TrySetException(tcs, ex);
 			}
 		}
 
@@ -478,11 +490,13 @@ namespace Microsoft.Maui.Media
 
 		class PhotoPickerDelegate : UIImagePickerControllerDelegate
 		{
+			public Action StartedHandler { get; set; }
 			public Action<NSDictionary> CompletedHandler { get; set; }
 			public override void FinishedPickingMedia(UIImagePickerController picker, NSDictionary info)
-            {
+			{
+				StartedHandler?.Invoke();
 				picker.DismissViewController(true, () => CompletedHandler?.Invoke(info));
-            }
+			}
 
 			public override void Canceled(UIImagePickerController picker)
 			{
@@ -493,12 +507,20 @@ namespace Microsoft.Maui.Media
 
 	class PhotoPickerDelegate : PHPickerViewControllerDelegate
 	{
+		public Action StartedHandler { get; set; }
 		public Action<PHPickerResult[]> CompletedHandler { get; set; }
 
 		public override void DidFinishPicking(PHPickerViewController picker, PHPickerResult[] results)
 		{
 			var captured = results?.Length > 0 ? results : [];
-            picker.DismissViewController(true, () => CompletedHandler?.Invoke(captured));
+
+			// Empty PHPicker results indicate cancellation, so leave the dismissal handler active.
+			if (captured.Length > 0)
+			{
+				StartedHandler?.Invoke();
+			}
+
+			picker.DismissViewController(true, () => CompletedHandler?.Invoke(captured));
 		}
 	}
 
@@ -506,12 +528,16 @@ namespace Microsoft.Maui.Media
 	{
 		public Action Handler { get; set; }
 
-		public override void DidDismiss(UIPresentationController presentationController) =>
+		public override void DidDismiss(UIPresentationController presentationController)
+		{
 			Handler?.Invoke();
+			Handler = null;
+		}
 
 		protected override void Dispose(bool disposing)
 		{
 			Handler?.Invoke();
+			Handler = null;
 			base.Dispose(disposing);
 		}
 	}
