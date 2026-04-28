@@ -514,6 +514,7 @@ namespace Microsoft.Maui.Media
 		{
 			var captured = results?.Length > 0 ? results : [];
 
+			// Empty PHPicker results indicate cancellation, so leave the dismissal handler active.
 			if (captured.Length > 0)
 			{
 				StartedHandler?.Invoke();
@@ -535,6 +536,7 @@ namespace Microsoft.Maui.Media
 
 		protected override void Dispose(bool disposing)
 		{
+			Handler?.Invoke();
 			Handler = null;
 			base.Dispose(disposing);
 		}

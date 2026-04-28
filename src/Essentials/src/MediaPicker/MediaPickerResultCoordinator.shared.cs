@@ -35,6 +35,8 @@ namespace Microsoft.Maui.Media
 		{
 			while (true)
 			{
+				// This coordinator only arbitrates between a dismissal callback and a completion callback,
+				// so state transitions are one-way and contention stays very small.
 				var state = Volatile.Read(ref _state);
 
 				if (state == Completed)
