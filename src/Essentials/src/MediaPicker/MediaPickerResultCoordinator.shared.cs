@@ -4,8 +4,13 @@ using System.Threading.Tasks;
 
 namespace Microsoft.Maui.Media
 {
+	// Shared on purpose: this type only coordinates TaskCompletionSource state transitions and
+	// does not depend on UIKit/PHPicker APIs, which keeps the iOS race-handling logic easier to test.
 	internal sealed class MediaPickerResultCoordinator<TResult>
 	{
+		// Pending: the picker is still on screen and dismissal is allowed to complete as cancellation.
+		// CompletionStarted: the user already selected media and async materialization is in flight.
+		// Completed: a result/exception/cancellation already won and later callbacks must be ignored.
 		const int Pending = 0;
 		const int CompletionStarted = 1;
 		const int Completed = 2;
@@ -23,6 +28,8 @@ namespace Microsoft.Maui.Media
 
 		internal bool TrySetCanceled(TaskCompletionSource<TResult> taskCompletionSource, TResult canceledResult)
 		{
+			// Cancellation is only valid while the picker is still pending. Once a real completion path
+			// has started, dismissal/disposal callbacks must not override the in-flight selection.
 			if (Interlocked.CompareExchange(ref _state, Completed, Pending) != Pending)
 			{
 				return false;
